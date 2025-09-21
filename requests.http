@@ -1,0 +1,31 @@
+
+@baseUrl = http://localhost:8000
+
+### Create advertisement
+POST {{baseUrl}}/advertisement
+Content-Type: application/json
+
+{
+  "title": "Продаю велосипед",
+  "description": "Чистый велосипед, состояние отличное",
+  "price": 15000.0,
+  "author": "Иван Иванов"
+}
+
+### Get advertisement by ID
+GET {{baseUrl}}/advertisement/ac378e9b-9d08-41bd-934e-3c9cda853d25
+
+### Update advertisement
+PATCH {{baseUrl}}/advertisement/ac378e9b-9d08-41bd-934e-3c9cda853d25
+Content-Type: application/json
+
+{
+  "title": "Новый заголовок",
+  "price": 16000.0
+}
+
+### Delete advertisement
+DELETE {{baseUrl}}/advertisement/ac378e9b-9d08-41bd-934e-3c9cda853d25
+
+### Search advertisements
+GET {{baseUrl}}/advertisement?q=велосипед&min_price=10000&max_price=20000&author=Иван Иванов
