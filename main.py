@@ -1,8 +1,13 @@
 from datetime import datetime, timezone
+from contextlib import asynccontextmanager
 from typing import List, Optional
-from fastapi import FastAPI, HTTPException, Path, Query
+from fastapi import FastAPI, HTTPException, Path, Query, Depends
 from pydantic import BaseModel, Field
 from uuid import UUID, uuid4
+from sqlalchemy.ext.asyncio import AsyncSession
+from models import AdvertisementORM, AsyncSessionLocal, init_db
+from sqlalchemy import select
+
 
 app = FastAPI(title="Advertisements API")
 
@@ -26,62 +31,93 @@ class Advertisement(BaseModel):
     author: str
     created_at: datetime
 
+def orm_to_pydantic(ad: AdvertisementORM) -> Advertisement:
+    return Advertisement(
+        id=ad.id,
+        title=ad.title,
+        description=ad.description,
+        price=ad.price,
+        author=ad.author,
+        created_at=ad.created_at,
+    )
 
-ads_db: dict[UUID, Advertisement] = {}
+async def get_session() :
+    async with AsyncSessionLocal() as session:
+        yield session
 
-def current_time() -> datetime:
-    return datetime.now(timezone.utc)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await init_db()
+    yield
+
+app = FastAPI(lifespan=lifespan)
 
 @app.post("/advertisement", response_model=Advertisement, status_code=201)
-def create_advertisement(ad: AdvertisementCreate):
+async def create_advertisement(ad: AdvertisementCreate, session: AsyncSession = Depends(get_session)):
     new_id = uuid4()
-    ad_obj = Advertisement(
+    ad_obj = AdvertisementORM(
         id=new_id,
         title=ad.title,
         description=ad.description,
         price=ad.price,
         author=ad.author,
-        created_at=current_time(),
+        created_at=datetime.now(timezone.utc),
     )
-    ads_db[new_id] = ad_obj
-    return ad_obj
+    session.add(ad_obj)
+    await session.commit()
+    await session.refresh(ad_obj)
+    return orm_to_pydantic(ad_obj)
 
 @app.get("/advertisement/{advertisement_id}", response_model=Advertisement)
-def get_advertisement(advertisement_id: UUID = Path(..., description="ID объявления")):
-    if advertisement_id not in ads_db:
+async def get_advertisement(advertisement_id: UUID = Path(..., description="ID объявления"), session: AsyncSession = Depends(get_session)):
+    result = await session.execute(select(AdvertisementORM).where(AdvertisementORM.id == advertisement_id))
+    ad_obj = result.scalar_one_or_none()
+    if ad_obj is None:
         raise HTTPException(status_code=404, detail="Advertisement not found")
-    return ads_db[advertisement_id]
+    return orm_to_pydantic(ad_obj)
 
 @app.patch("/advertisement/{advertisement_id}", response_model=Advertisement)
-def update_advertisement(
+async def update_advertisement(
     advertisement_id: UUID = Path(..., description="ID объявления"),
-    ad_update: AdvertisementUpdate = ...
+    ad_update: AdvertisementUpdate = ...,
+    session: AsyncSession = Depends(get_session)
 ):
-    if advertisement_id not in ads_db:
+    result = await session.execute(select(AdvertisementORM).where(AdvertisementORM.id == advertisement_id))
+    existing = result.scalar_one_or_none()
+    if existing is None:
         raise HTTPException(status_code=404, detail="Advertisement not found")
-    existing = ads_db[advertisement_id]
+
     update_data = ad_update.dict(exclude_unset=True)
-    updated = existing.copy()
     for k, v in update_data.items():
-        setattr(updated, k, v)
-    ads_db[advertisement_id] = updated
-    return updated
+        setattr(existing, k, v)
+
+    session.add(existing)
+    await session.commit()
+    await session.refresh(existing)
+    return orm_to_pydantic(existing)
 
 @app.delete("/advertisement/{advertisement_id}", status_code=204)
-def delete_advertisement(advertisement_id: UUID = Path(..., description="ID объявления")):
-    if advertisement_id not in ads_db:
+async def delete_advertisement(advertisement_id: UUID = Path(..., description="ID объявления"), session: AsyncSession = Depends(get_session)):
+    result = await session.execute(select(AdvertisementORM).where(AdvertisementORM.id == advertisement_id))
+    ad_obj = result.scalar_one_or_none()
+    if ad_obj is None:
         raise HTTPException(status_code=404, detail="Advertisement not found")
-    del ads_db[advertisement_id]
+    await session.delete(ad_obj)
+    await session.commit()
     return
 
 @app.get("/advertisement", response_model=List[Advertisement])
-def search_advertisements(
+async def search_advertisements(
     q: Optional[str] = Query(None, description="Поиск по заголовку и описанию"),
     min_price: Optional[float] = Query(None, ge=0),
     max_price: Optional[float] = Query(None, ge=0),
-    author: Optional[str] = Query(None)
+    author: Optional[str] = Query(None),
+    session: AsyncSession = Depends(get_session)
 ):
-    results = list(ads_db.values())
+    stmt = select(AdvertisementORM)
+    ads = (await session.execute(stmt)).scalars().all()
+
+    results = ads
 
     if q:
         q_lower = q.lower()
@@ -96,4 +132,4 @@ def search_advertisements(
     if author is not None:
         results = [a for a in results if a.author == author]
 
-    return results
+    return [orm_to_pydantic(a) for a in results]
