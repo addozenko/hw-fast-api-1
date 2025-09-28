@@ -9,7 +9,7 @@ docker compose logs -f
 Найдите строки об успешной загрузке приложения и инициализации БД.
 
 Шаг 3: Доступ к API
-Откройте браузер и перейдите по адресу:http://localhost:8000/docs для документации Swagger UIhttp://localhost:8000/redoc для 
+Откройте браузер и перейдите по адресу:http://localhost:8000/docs для документации к api
 ## Методы:
 
 POST /advertisement
