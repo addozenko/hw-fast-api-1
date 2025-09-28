@@ -12,8 +12,8 @@ docker compose logs -f
 Откройте браузер и перейдите по адресу:http://localhost:8000/docs для документации к api
 ## Методы:
 
-POST /advertisement
-GET /advertisement/{advertisement_id}
-PATCH /advertisement/{advertisement_id}
-DELETE /advertisement/{advertisement_id}
-GET /advertisement
+- POST /advertisement
+- GET /advertisement/{advertisement_id}
+- PATCH /advertisement/{advertisement_id}
+- DELETE /advertisement/{advertisement_id}
+- GET /advertisement
